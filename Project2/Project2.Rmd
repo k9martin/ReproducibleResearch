@@ -1,0 +1,131 @@
+---
+title: "Reproducible Research Project 2"
+author: "Francisco Martín"
+date: "October 2, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Synopsis 
+
+This project analyzes data from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database 
+and determine the effect of major storms and weather effects on US population and economy. Summarizing, impact in 
+population, injuries and deads, was caused by tornados and other similar evets. Otherwise, impact in economy is caused 
+by a greater variety of fenomena, being the most important floods and droughts.
+
+## Data Processing 
+
+This project uses data from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This data 
+is obtained from Reproducible Research course's page at first time, and then it is analyzed:
+
+```{r download_and_read}
+fileName <- "data.csv.bz2"
+pathName <- file.path(getwd(),fileName)
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",pathName)
+dataRead <- read.csv(pathName)
+head(dataRead)
+```
+
+First of all, only data related to health or economic impact is going to be considered.
+
+```{r filter_data}
+valid_data <- c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")
+data_filtered <- dataRead[valid_data]
+```
+
+Columns "PROPDMGEXP" and "CROPDMGEXP" refers to cost in exponential value. This columns shows economic impact in a combination of 
+letters and numbers. In example, 100 can appear as "H", "h" or "2". The list of posible characters is the following:
+
+```{r list_PROPDMGEXP}
+unique(data_filtered$PROPDMGEXP)
+unique(data_filtered$CROPDMGEXP)
+```
+
+This values will be renamed in two new columns called "GOOD_PROPEXP" and "GOOD_CROPEXP"
+
+```{r process_PROPDMGEXP}
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "+" | data_filtered$PROPDMGEXP == "-" | data_filtered$PROPDMGEXP == "?" | data_filtered$PROPDMGEXP == ""] <- 0
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "0"] <- 1
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "1"] <- 10
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "H" | data_filtered$PROPDMGEXP == "h" | data_filtered$PROPDMGEXP == "2" ] <- 100
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "K" | data_filtered$PROPDMGEXP == "3" ] <- 1000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "4"] <- 10000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "5"] <- 100000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "M" | data_filtered$PROPDMGEXP == "m" | data_filtered$PROPDMGEXP == "6" ] <- 1000000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "7"] <- 10000000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "8"] <- 100000000
+data_filtered$GOOD_PROPEXP[data_filtered$PROPDMGEXP == "B"] <- 1000000000
+
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "?" | data_filtered$CROPDMGEXP == "" ] <- 0
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "0" ] <- 1
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "2" ] <- 100
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "k" | data_filtered$CROPDMGEXP == "K" ] <- 1000
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "m" | data_filtered$CROPDMGEXP == "M" ] <- 1000000
+data_filtered$GOOD_CROPEXP[data_filtered$CROPDMGEXP == "B" ] <- 1000000000
+```
+
+Finally, total economic damage is given by the multiplication of columns "PROPDMG" and "GOOD_PROPEXP" for property 
+damages and the multiplication of columns "CROPDMG" and "GOOD_CROPEXP" for crop damages. This values will be saved 
+in two new columns called "COST_PROP" and "COST_CROP"
+```{r cost}
+data_filtered$COST_PROP <- data_filtered$PROPDMG * data_filtered$GOOD_PROPEXP
+data_filtered$COST_CROP <- data_filtered$CROPDMG * data_filtered$GOOD_CROPEXP
+```
+
+In order to plot correctly, it is useful to calculate total fatalities, injuries, property damage and crop damage 
+per different event:
+
+```{r data_separe}
+fatalities <- aggregate(FATALITIES~EVTYPE, data_filtered, sum)
+injuries <- aggregate(INJURIES~EVTYPE, data_filtered, sum)
+prop_damage <- aggregate(COST_PROP~EVTYPE, data_filtered, sum)
+crop_damage <- aggregate(COST_CROP~EVTYPE, data_filtered, sum)
+```
+
+And now data is ready to be plotted and evaluated evaluated.
+
+## Results
+
+### Population Health analysis
+
+First of all let's look at health analysis. There are two measures here, fatalities and injuries. As there are more 
+than 980 different events, only top-10 is going to be analyzed.
+
+```{r health_plots}
+top10_fatalities <- fatalities[order(-fatalities$FATALITIES), ][1:10, ]
+top10_injuries <- injuries[order(-injuries$INJURIES), ][1:10, ]
+
+par(mfrow = c(1, 2), cex = 0.5)
+barplot(top10_fatalities$FATALITIES, las = 3, names.arg = top10_fatalities$EVTYPE, main = "Top 10 Fatalities", ylab = "Sum of fatalities", col = "red")
+barplot(top10_injuries$INJURIES, las = 3, names.arg = top10_injuries$EVTYPE, main = "Top 10 Injuries", ylab = "Sum of injuries", col = "blue")
+```
+
+It can be seen that tornadoes are by far the most dangerous event for U.S. people. They causes the most injuries and 
+fatalities.
+
+### Economic Health analysis
+
+Weather events also have an impact on economic health. Here there are also two measures, Property damage and Crop 
+damage. Let's look at the top-10 events which has a greater impact on U.S. economy:
+
+```{r economy_plots}
+top10_Prop <- prop_damage[order(-prop_damage$COST_PROP), ][1:10, ]
+top10_Crop <- crop_damage[order(-crop_damage$COST_CROP), ][1:10, ]
+
+par(mfrow = c(1, 2), cex = 0.5)
+barplot(top10_Prop$COST_PROP, las = 3, names.arg = top10_Prop$EVTYPE, main = "Top 10 Property damage", ylab = "Total cost", col = "green")
+barplot(top10_Crop$COST_CROP, las = 3, names.arg = top10_Crop$EVTYPE, main = "Top 10 Crop damage", ylab = "Total cost", col = "yellow")
+```
+
+As we can see, Flood generates the maximun property damage, but Crop damage is domined by Drought.
+
+## Conclusion
+
+In this project we have evaluated impact of weather events on population health and also in economic health in 
+U.S. As a result, we have obtained that largest population health impact is caused by tornadoes, but in economic 
+health both Flood and Drought are the dominants. Other events such as extreme head can be neutralized by social education, 
+but they are quite less important in terms of population and economic health.
